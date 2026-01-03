@@ -1,0 +1,901 @@
+/*******************************************************
+  SlideGenius Platform (2-file Static MVP)
+  - Templates gallery with watermark
+  - Editor: title/body, font, sizes, color, image upload
+  - PayPal Smart Buttons (Sandbox/Live) client-side
+  - Simple "Admin" (local) to add/remove templates
+  NOTE: This is NOT secure like a real server admin.
+*******************************************************/
+
+// ======== EDIT THESE ONLY ========
+const ADMIN_PASSWORD = "CHANGE_ME_12345"; // Men9876!2001 (للأدمن المحلي)
+Const PAYPAL_CLIENT_ID = "PASTE_YOUR_PAYPAL_CLIENT_ID_HERE"; // ARr6tZ7AowhDTO8MUfjcQHS-8yzKCFJaPWH4O6adsm0y1fEurdxD-m1rB3qctrDG9DJua7Ab80-qETgC
+// =================================
+
+const LS = {
+  TEMPLATES: "sg_templates_v1",
+  ADMIN_OK: "sg_admin_ok_v1",
+  UNLOCKED: "sg_unlocked_v1",
+  EDIT_STATE: "sg_edit_state_v1"
+};
+
+const state = {
+  lang: "ar", // ar / en
+  selectedTemplateId: null,
+  templates: [],
+  unlocked: false,
+  edit: {
+    title: "",
+    body: "",
+    font: "Cairo",
+    color: "#ffffff",
+    titleSize: 44,
+    bodySize: 18,
+    bgImgDataUrl: "" // uploaded image data url
+  },
+  pay: {
+    currency: "USD",
+    amount: 10
+  },
+  paypalSdkLoaded: false
+};
+
+const i18n = {
+  ar: {
+    homeTitle: "حوّلي أفكارك لتصميم عرض خلال ثواني",
+    homeSub: "اختاري قالب، اكتبي المحتوى، أضيفي صورة، وعدّلي الخط والحجم… ثم ادفعي لتحميل النسخة النهائية.",
+    tplTitle: "القوالب",
+    tplSub: "اضغطي على أي قالب لاختياره ثم افتحي المحرر.",
+    edTitle: "المحرر",
+    prTitle: "الأسعار والدفع",
+    prSub: "اختاري باقة ثم ادفعي عبر PayPal. (ضعي Client ID لاحقاً)",
+    adTitle: "لوحة الأدمن (نسخة ملحين)",
+    btnStart: "ابدأ الآن",
+    btnGoTemplates: "استعرض القوالب",
+    btnToEditor: "اذهب للمحرر",
+    lblTpl: "القالب المختار",
+    lblTitle: "العنوان",
+    lblBody: "النص",
+    lblFont: "الخط",
+    lblColor: "لون النص",
+    lblSize: "حجم العنوان",
+    lblBodySize: "حجم النص",
+    lblImg: "إضافة صورة (رفع من جهازك)",
+    btnPreview: "تحديث المعاينة",
+    btnClear: "مسح",
+    btnDownload: "تحميل (بعد الدفع)",
+    btnGoPay: "اذهب للدفع",
+    payLocked: "🔒 التحميل مقفل. ادفعي أولاً من صفحة الأسعار.",
+    payUnlocked: "✅ تم فتح التحميل لهذا الجهاز.",
+    ppTitle: "PayPal",
+    ppHint: "✳️ لازم تحطين PAYPAL_CLIENT_ID في أعلى app.js (Sandbox أو Live). بعد الدفع تتفعل ميزة التحميل.",
+    lblCurrency: "العملة",
+    lblAmount: "المبلغ",
+    adminLoginTitle: "تسجيل دخول الأدمن",
+    adminPw: "كلمة مرور الأدمن",
+    adminOk: "✅ تم تسجيل الدخول",
+    adminBad: "❌ كلمة المرور خطأ",
+    manageTitle: "إضافة قالب جديد",
+    tplName: "اسم القالب",
+    tplImg: "رابط صورة القالب (PNG/JPG)",
+    tplPrice: "سعر (للإظهار فقط)",
+    add: "إضافة",
+    reset: "إرجاع الافتراضي",
+    remove: "حذف"
+  },
+  en: {
+    homeTitle: "Turn ideas into a polished design in seconds",
+    homeSub: "Pick a template, write your content, add an image, tweak fonts & sizes… then pay to unlock download.",
+    tplTitle: "Templates",
+    tplSub: "Click any template to select it, then open the editor.",
+    edTitle: "Editor",
+    prTitle: "Pricing & Payment",
+    prSub: "Pick a plan then pay via PayPal. (Add Client ID first)",
+    adTitle: "Admin (local MVP)",
+    btnStart: "Get Started",
+    btnGoTemplates: "Browse Templates",
+    btnToEditor: "Go to Editor",
+    lblTpl: "Selected Template",
+    lblTitle: "Title",
+    lblBody: "Body",
+    lblFont: "Font",
+    lblColor: "Text Color",
+    lblSize: "Title Size",
+    lblBodySize: "Body Size",
+    lblImg: "Add image (upload)",
+    btnPreview: "Update Preview",
+    btnClear: "Clear",
+    btnDownload: "Download (after payment)",
+    btnGoPay: "Go to Payment",
+    payLocked: "🔒 Download locked. Please pay first in Pricing.",
+    payUnlocked: "✅ Download unlocked on this device.",
+    ppTitle: "PayPal",
+    ppHint: "✳️ Put PAYPAL_CLIENT_ID at the top of app.js (Sandbox or Live). After payment download unlocks.",
+    lblCurrency: "Currency",
+    lblAmount: "Amount",
+    adminLoginTitle: "Admin Login",
+    adminPw: "Admin password",
+    adminOk: "✅ Logged in",
+    adminBad: "❌ Wrong password",
+    manageTitle: "Add new template",
+    tplName: "Template name",
+    tplImg: "Template image URL (PNG/JPG)",
+    tplPrice: "Price (display only)",
+    add: "Add",
+    reset: "Reset defaults",
+    remove: "Remove"
+  }
+};
+
+const defaultTemplates = () => ([
+  {
+    id: "t1",
+    name_ar: "قالب رقعة (تقريبي)",
+    name_en: "Ruqaa-style (approx.)",
+    price: 10,
+    image: "template1.png"
+  },
+  {
+    id: "t2",
+    name_ar: "قالب نسخ/كلاسيك",
+    name_en: "Naskh / Classic",
+    price: 10,
+    image: "template2.png"
+  },
+  {
+    id: "t3",
+    name_ar: "قالب كوفي (تقريبي)",
+    name_en: "Kufi-style (approx.)",
+    price: 15,
+    image: "template1.png"
+  },
+  {
+    id: "t4",
+    name_ar: "قالب عصري (Cairo)",
+    name_en: "Modern (Cairo)",
+    price: 12,
+    image: "template2.png"
+  }
+]);
+
+const fontOptions = [
+  { key: "Cairo", ar: "مصري / Cairo", en: "Cairo (Arabic friendly)" },
+  { key: "Noto Naskh Arabic", ar: "نسخ / Noto Naskh", en: "Noto Naskh Arabic" },
+  { key: "Noto Kufi Arabic", ar: "كوفي / Noto Kufi", en: "Noto Kufi Arabic" },
+  { key: "Amiri", ar: "ديواني (تقريبي) / Amiri", en: "Amiri (classic)" },
+  { key: "Aref Ruqaa", ar: "رقعة / Aref Ruqaa", en: "Aref Ruqaa (Ruqaa)" },
+  { key: "Reem Kufi", ar: "كوفي حديث / Reem Kufi", en: "Reem Kufi" }
+];
+
+// ---------- DOM helpers ----------
+const $ = (id) => document.getElementById(id);
+function t(key){
+  return (i18n[state.lang] && i18n[state.lang][key]) || key;
+}
+function setDirLang(){
+  document.documentElement.lang = state.lang;
+  document.documentElement.dir = state.lang === "ar" ? "rtl" : "ltr";
+}
+function toast(el, text, ok=true){
+  el.textContent = text;
+  el.style.color = ok ? "var(--good)" : "var(--bad)";
+}
+
+// ---------- Load/Save ----------
+function loadTemplates(){
+  const raw = localStorage.getItem(LS.TEMPLATES);
+  state.templates = raw ? safeJson(raw, defaultTemplates()) : defaultTemplates();
+}
+function saveTemplates(){
+  localStorage.setItem(LS.TEMPLATES, JSON.stringify(state.templates));
+}
+function safeJson(raw, fallback){
+  try{ return JSON.parse(raw); }catch{ return fallback; }
+}
+function loadUnlocked(){
+  state.unlocked = localStorage.getItem(LS.UNLOCKED) === "1";
+}
+function setUnlocked(v){
+  state.unlocked = !!v;
+  localStorage.setItem(LS.UNLOCKED, v ? "1" : "0");
+}
+function loadEdit(){
+  const raw = localStorage.getItem(LS.EDIT_STATE);
+  const d = raw ? safeJson(raw, null) : null;
+  if(d){
+    state.edit = { ...state.edit, ...d };
+  }
+}
+function saveEdit(){
+  localStorage.setItem(LS.EDIT_STATE, JSON.stringify(state.edit));
+}
+
+// ---------- Navigation ----------
+function showPage(name){
+  document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+  const el = $("page-"+name);
+  if(el) el.classList.add("active");
+
+  // refresh on page open
+  if(name === "templates") renderTemplates();
+  if(name === "editor") syncEditorUI();
+  if(name === "pricing") setupPayPalArea();
+  if(name === "admin") renderAdminList();
+
+  // scroll top
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function bindNav(){
+  document.querySelectorAll("[data-page]").forEach(btn=>{
+    btn.addEventListener("click", ()=>showPage(btn.dataset.page));
+  });
+
+  $("btnStart").addEventListener("click", ()=>showPage("editor"));
+  $("btnGoTemplates").addEventListener("click", ()=>showPage("templates"));
+  $("btnToEditor").addEventListener("click", ()=>showPage("editor"));
+  $("btnGoPay").addEventListener("click", ()=>showPage("pricing"));
+
+  $("btnLang").addEventListener("click", ()=>{
+    state.lang = state.lang === "ar" ? "en" : "ar";
+    applyI18n();
+    renderTemplates();
+    syncEditorUI();
+    renderAdminList();
+    setupPayPalArea();
+  });
+}
+
+// ---------- i18n ----------
+function applyI18n(){
+  setDirLang();
+  $("btnLang").textContent = state.lang === "ar" ? "EN" : "AR";
+
+  $("homeTitle").textContent = t("homeTitle");
+  $("homeSub").textContent = t("homeSub");
+  $("btnStart").textContent = t("btnStart");
+  $("btnGoTemplates").textContent = t("btnGoTemplates");
+
+  $("tplTitle").textContent = t("tplTitle");
+  $("tplSub").textContent = t("tplSub");
+  $("btnToEditor").textContent = t("btnToEditor");
+
+  $("edTitle").textContent = t("edTitle");
+  $("lblTpl").textContent = t("lblTpl");
+  $("lblTitle").textContent = t("lblTitle");
+  $("lblBody").textContent = t("lblBody");
+  $("lblFont").textContent = t("lblFont");
+  $("lblColor").textContent = t("lblColor");
+  $("lblSize").textContent = t("lblSize");
+  $("lblBodySize").textContent = t("lblBodySize");
+  $("lblImg").textContent = t("lblImg");
+  $("btnPreview").textContent = t("btnPreview");
+  $("btnClear").textContent = t("btnClear");
+  $("btnDownload").textContent = t("btnDownload");
+  $("btnGoPay").textContent = t("btnGoPay");
+
+  $("prTitle").textContent = t("prTitle");
+  $("prSub").textContent = t("prSub");
+  $("ppTitle").textContent = t("ppTitle");
+  $("ppHint").textContent = t("ppHint");
+  $("lblCurrency").textContent = t("lblCurrency");
+  $("lblAmount").textContent = t("lblAmount");
+
+  $("adTitle").textContent = t("adTitle");
+  $("adLoginTitle").textContent = t("adminLoginTitle");
+  $("lblAdminPw").textContent = t("adminPw");
+  $("adManageTitle").textContent = t("manageTitle");
+  $("lblTplName").textContent = t("tplName");
+  $("lblTplImg").textContent = t("tplImg");
+  $("lblTplPrice").textContent = t("tplPrice");
+  $("btnAddTpl").textContent = t("add");
+  $("btnResetTpl").textContent = t("reset");
+}
+
+// ---------- Templates ----------
+function templateName(tpl){
+  return state.lang === "ar" ? tpl.name_ar : tpl.name_en;
+}
+
+function renderTemplates(){
+  const grid = $("templatesGrid");
+  grid.innerHTML = "";
+
+  state.templates.forEach(tpl=>{
+    const el = document.createElement("div");
+    el.className = "tpl";
+    el.innerHTML = `
+      <div class="thumb">
+        <img src="${tpl.image}" alt="" />
+        <div class="watermark"><span>SlideGenius</span></div>
+      </div>
+      <div class="meta">
+        <div>
+          <strong>${escapeHtml(templateName(tpl))}</strong>
+          <small>${state.lang === "ar" ? "سعر: " : "Price: "}${tpl.price}</small>
+        </div>
+        <div style="opacity:.85">${tpl.id === state.selectedTemplateId ? "✅" : ""}</div>
+      </div>
+    `;
+    el.addEventListener("click", ()=>{
+      state.selectedTemplateId = tpl.id;
+      saveEdit();
+      renderTemplates();
+      syncTemplateSelect();
+    });
+    grid.appendChild(el);
+  });
+
+  // default select
+  if(!state.selectedTemplateId && state.templates[0]){
+    state.selectedTemplateId = state.templates[0].id;
+  }
+  syncTemplateSelect();
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, m => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+  }[m]));
+}
+
+// ---------- Editor ----------
+function fillFontSelect(){
+  const sel = $("selFont");
+  sel.innerHTML = "";
+  fontOptions.forEach(f=>{
+    const op = document.createElement("option");
+    op.value = f.key;
+    op.textContent = state.lang === "ar" ? f.ar : f.en;
+    sel.appendChild(op);
+  });
+}
+
+function syncTemplateSelect(){
+  const sel = $("selTemplate");
+  sel.innerHTML = "";
+  state.templates.forEach(tpl=>{
+    const op = document.createElement("option");
+    op.value = tpl.id;
+    op.textContent = templateName(tpl);
+    sel.appendChild(op);
+  });
+  sel.value = state.selectedTemplateId || (state.templates[0] && state.templates[0].id) || "";
+}
+
+function syncEditorUI(){
+  fillFontSelect();
+  syncTemplateSelect();
+
+  $("selTemplate").value = state.selectedTemplateId || "";
+  $("inpTitle").value = state.edit.title || "";
+  $("inpBody").value = state.edit.body || "";
+  $("selFont").value = state.edit.font || "Cairo";
+  $("inpColor").value = state.edit.color || "#ffffff";
+  $("rngTitle").value = String(state.edit.titleSize || 44);
+  $("rngBody").value = String(state.edit.bodySize || 18);
+
+  updatePayStatus();
+  renderPreview(); // show something immediately
+}
+
+function bindEditor(){
+  $("selTemplate").addEventListener("change", (e)=>{
+    state.selectedTemplateId = e.target.value;
+    saveEdit();
+    renderTemplates();
+    renderPreview();
+  });
+
+  $("inpTitle").addEventListener("input", (e)=>{
+    state.edit.title = e.target.value;
+    saveEdit();
+  });
+  $("inpBody").addEventListener("input", (e)=>{
+    state.edit.body = e.target.value;
+    saveEdit();
+  });
+  $("selFont").addEventListener("change", (e)=>{
+    state.edit.font = e.target.value;
+    saveEdit();
+    renderPreview();
+  });
+  $("inpColor").addEventListener("input", (e)=>{
+    state.edit.color = e.target.value;
+    saveEdit();
+    renderPreview();
+  });
+  $("rngTitle").addEventListener("input", (e)=>{
+    state.edit.titleSize = Number(e.target.value);
+    saveEdit();
+    renderPreview();
+  });
+  $("rngBody").addEventListener("input", (e)=>{
+    state.edit.bodySize = Number(e.target.value);
+    saveEdit();
+    renderPreview();
+  });
+
+  $("btnPreview").addEventListener("click", renderPreview);
+  $("btnClear").addEventListener("click", ()=>{
+    state.edit = {
+      title: "",
+      body: "",
+      font: "Cairo",
+      color: "#ffffff",
+      titleSize: 44,
+      bodySize: 18,
+      bgImgDataUrl: ""
+    };
+    saveEdit();
+    syncEditorUI();
+  });
+
+  $("fileImg").addEventListener("change", async (e)=>{
+    const file = e.target.files && e.target.files[0];
+    if(!file) return;
+    const dataUrl = await fileToDataUrl(file);
+    state.edit.bgImgDataUrl = dataUrl;
+    saveEdit();
+    renderPreview();
+  });
+
+  $("btnDownload").addEventListener("click", downloadPngFromPreview);
+}
+
+function renderPreview(){
+  const tpl = state.templates.find(x=>x.id === state.selectedTemplateId) || state.templates[0];
+  const canvas = $("canvas");
+  const pvTitle = $("pvTitle");
+  const pvBody = $("pvBody");
+  const wm = $("wmBig");
+
+  // background image preference: uploaded image -> template image
+  const bg = state.edit.bgImgDataUrl ? state.edit.bgImgDataUrl : (tpl ? tpl.image : "");
+  canvas.style.backgroundImage = bg ? `url("${bg}")` : "none";
+
+  pvTitle.textContent = state.edit.title || (state.lang === "ar" ? "عنوان تجريبي" : "Sample Title");
+  pvBody.textContent = state.edit.body || (state.lang === "ar" ? "هذا نص تجريبي… عدّليه من اليسار." : "This is sample body… edit it on the left.");
+
+  pvTitle.style.fontFamily = state.edit.font;
+  pvBody.style.fontFamily = state.edit.font;
+  pvTitle.style.color = state.edit.color;
+  pvBody.style.color = state.edit.color;
+
+  pvTitle.style.fontSize = `${state.edit.titleSize}px`;
+  pvBody.style.fontSize = `${state.edit.bodySize}px`;
+
+  // watermark always ON in preview. After payment we hide watermark only for download capture.
+  wm.style.display = "flex";
+}
+
+function fileToDataUrl(file){
+  return new Promise((resolve, reject)=>{
+    const r = new FileReader();
+    r.onload = ()=>resolve(String(r.result));
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+function updatePayStatus(){
+  const el = $("payStatus");
+  if(state.unlocked){
+    el.innerHTML = `<span class="ok">${t("payUnlocked")}</span>`;
+    $("btnDownload").disabled = false;
+  }else{
+    el.innerHTML = `<span class="bad">${t("payLocked")}</span>`;
+    $("btnDownload").disabled = true;
+  }
+}
+
+// Download: makes a simple "poster" capture using canvas (no external libs).
+async function downloadPngFromPreview(){
+  if(!state.unlocked){
+    alert(state.lang === "ar" ? "لازم الدفع أولاً." : "Payment required first.");
+    return;
+  }
+
+  const tpl = state.templates.find(x=>x.id === state.selectedTemplateId) || state.templates[0];
+  const bg = state.edit.bgImgDataUrl ? state.edit.bgImgDataUrl : (tpl ? tpl.image : "");
+
+  const W = 1280;
+  const H = 720;
+
+  const c = document.createElement("canvas");
+  c.width = W; c.height = H;
+  const ctx = c.getContext("2d");
+
+  // background
+  if(bg){
+    const img = await loadImage(bg);
+    // cover
+    const r = coverRect(img.width, img.height, W, H);
+    ctx.drawImage(img, r.sx, r.sy, r.sw, r.sh, 0, 0, W, H);
+  } else {
+    ctx.fillStyle = "#0b1116";
+    ctx.fillRect(0,0,W,H);
+  }
+
+  // text
+  ctx.fillStyle = state.edit.color || "#fff";
+  ctx.textAlign = state.lang === "ar" ? "right" : "left";
+
+  // title
+  ctx.font = `900 ${state.edit.titleSize * 1.2}px "${state.edit.font}", Cairo, sans-serif`;
+  const pad = 64;
+  const title = state.edit.title || (state.lang === "ar" ? "عنوان" : "Title");
+  wrapText(ctx, title, state.lang === "ar" ? (W - pad) : pad, 120, W - pad*2, state.edit.titleSize*1.35, state.lang === "ar");
+
+  // body
+  ctx.font = `600 ${state.edit.bodySize * 1.4}px "${state.edit.font}", Cairo, sans-serif`;
+  const body = state.edit.body || (state.lang === "ar" ? "نص..." : "Body...");
+  wrapText(ctx, body, state.lang === "ar" ? (W - pad) : pad, 260, W - pad*2, state.edit.bodySize*1.75, state.lang === "ar");
+
+  // download
+  const a = document.createElement("a");
+  a.href = c.toDataURL("image/png");
+  a.download = "slidegenius.png";
+  a.click();
+}
+
+function loadImage(src){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = ()=>resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+function coverRect(sw, sh, dw, dh){
+  const sRatio = sw/sh;
+  const dRatio = dw/dh;
+  if(sRatio > dRatio){
+    // source wider
+    const newW = sh * dRatio;
+    const sx = (sw - newW)/2;
+    return { sx, sy:0, sw:newW, sh };
+  } else {
+    // source taller
+    const newH = sw / dRatio;
+    const sy = (sh - newH)/2;
+    return { sx:0, sy, sw, sh:newH };
+  }
+}
+
+function wrapText(ctx, text, x, y, maxWidth, lineHeight, rtl){
+  const words = String(text).split(/\s+/);
+  let line = "";
+  const lines = [];
+  for(let i=0;i<words.length;i++){
+    const test = line ? (line + " " + words[i]) : words[i];
+    const w = ctx.measureText(test).width;
+    if(w > maxWidth && line){
+      lines.push(line);
+      line = words[i];
+    }else{
+      line = test;
+    }
+  }
+  if(line) lines.push(line);
+
+  lines.slice(0, 10).forEach((ln, idx)=>{
+    const draw = rtl ? toRtlVisual(ln) : ln;
+    ctx.fillText(draw, x, y + idx*lineHeight);
+  });
+}
+
+// simple helper: not perfect Arabic shaping, but browser canvas handles Arabic shaping.
+// For rtl alignment, we already use textAlign=right, so we can draw as-is.
+function toRtlVisual(s){ return s; }
+
+// ---------- Pricing cards ----------
+function renderPricing(){
+  const cards = $("priceCards");
+  cards.innerHTML = "";
+
+  const plans = [
+    {
+      ar: { name:"أساسي", desc:"تحميل تصميم واحد", items:["قالب + محرر", "رفع صورة", "خطوط عربية مجانية"] },
+      en: { name:"Basic", desc:"Download 1 design", items:["Template + editor", "Image upload", "Free Arabic fonts"] },
+      amount: 10
+    },
+    {
+      ar: { name:"برو", desc:"تحميل 10 تصاميم", items:["كل الأساسيات", "تحكم أكبر بالخطوط", "أولوية دعم"] },
+      en: { name:"Pro", desc:"Download 10 designs", items:["All basics", "More font control", "Priority support"] },
+      amount: 25
+    },
+    {
+      ar: { name:"استوديو", desc:"غير محدود (على الجهاز)", items:["كل شيء", "إدارة قوالب محلية", "قابل للتطوير لاحقاً"] },
+      en: { name:"Studio", desc:"Unlimited (device)", items:["Everything", "Local admin templates", "Scalable later"] },
+      amount: 50
+    }
+  ];
+
+  plans.forEach(p=>{
+    const el = document.createElement("div");
+    el.className = "price";
+    const name = state.lang==="ar"?p.ar.name:p.en.name;
+    const desc = state.lang==="ar"?p.ar.desc:p.en.desc;
+    const items = state.lang==="ar"?p.ar.items:p.en.items;
+    el.innerHTML = `
+      <h3>${escapeHtml(name)}</h3>
+      <div class="amt">${p.amount} ${state.pay.currency}</div>
+      <div style="color:var(--muted);font-size:13px;margin-bottom:10px">${escapeHtml(desc)}</div>
+      <ul>
+        ${items.map(x=>`<li>${escapeHtml(x)}</li>`).join("")}
+      </ul>
+      <div class="cta-row" style="margin-top:12px">
+        <button class="btn" data-choose="${p.amount}">${state.lang==="ar"?"اختيار":"Choose"}</button>
+      </div>
+    `;
+    el.querySelector("[data-choose]").addEventListener("click", ()=>{
+      state.pay.amount = p.amount;
+      $("inpAmount").value = String(p.amount);
+      $("ppMsg").textContent = state.lang==="ar" ? "تم اختيار الخطة. اضغطي زر PayPal." : "Plan selected. Click PayPal.";
+      setupPayPalArea(true);
+    });
+    cards.appendChild(el);
+  });
+}
+
+// ---------- PayPal ----------
+function setupPayPalArea(forceRerender=false){
+  renderPricing();
+
+  $("selCurrency").value = state.pay.currency;
+  $("inpAmount").value = String(state.pay.amount);
+
+  $("selCurrency").onchange = (e)=>{
+    state.pay.currency = e.target.value;
+    setupPayPalArea(true);
+  };
+  $("inpAmount").oninput = (e)=>{
+    const v = Number(e.target.value || 0);
+    state.pay.amount = Math.max(1, isFinite(v)?v:10);
+  };
+
+  const area = $("paypalArea");
+  const msg = $("ppMsg");
+
+  // If no client id, show instructions only
+  if(!PAYPAL_CLIENT_ID || PAYPAL_CLIENT_ID.includes("PASTE_")){
+    area.innerHTML = "";
+    msg.textContent = state.lang==="ar"
+      ? "ضعي PAYPAL_CLIENT_ID في أعلى app.js ثم أعيدي تحميل الصفحة."
+      : "Set PAYPAL_CLIENT_ID at the top of app.js then reload.";
+    return;
+  }
+
+  msg.textContent = "";
+
+  // Load SDK once
+  if(!state.paypalSdkLoaded){
+    area.innerHTML = "";
+    loadPayPalSdk(PAYPAL_CLIENT_ID, state.pay.currency)
+      .then(()=>{
+        state.paypalSdkLoaded = true;
+        renderPayPalButtons(forceRerender);
+      })
+      .catch(()=>{
+        msg.textContent = state.lang==="ar" ? "خطأ في تحميل PayPal SDK" : "Failed to load PayPal SDK";
+      });
+  }else{
+    renderPayPalButtons(forceRerender);
+  }
+}
+
+function loadPayPalSdk(clientId, currency){
+  return new Promise((resolve, reject)=>{
+    // remove previous sdk if any (for currency changes)
+    const old = document.getElementById("paypal-sdk");
+    if(old) old.remove();
+
+    const s = document.createElement("script");
+    s.id = "paypal-sdk";
+    s.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(clientId)}&currency=${encodeURIComponent(currency)}&intent=capture`;
+    s.onload = ()=>resolve();
+    s.onerror = ()=>reject();
+    document.head.appendChild(s);
+  });
+}
+
+function renderPayPalButtons(force=false){
+  const area = $("paypalArea");
+  const msg = $("ppMsg");
+
+  // If currency changed, reload SDK so currency is correct
+  const sdk = document.getElementById("paypal-sdk");
+  if(sdk && !sdk.src.includes(`currency=${encodeURIComponent(state.pay.currency)}`)){
+    state.paypalSdkLoaded = false;
+    return setupPayPalArea(true);
+  }
+
+  // force rerender
+  if(force) area.innerHTML = "";
+
+  if(area.childElementCount > 0) return;
+
+  if(!window.paypal){
+    msg.textContent = state.lang==="ar" ? "PayPal غير جاهز بعد..." : "PayPal not ready yet...";
+    return;
+  }
+
+  window.paypal.Buttons({
+    style: { layout: "vertical", color: "blue", shape: "pill", label: "pay" },
+
+    createOrder: (data, actions) => {
+      const amount = String(Math.max(1, Number(state.pay.amount || 10)));
+      const currency = state.pay.currency || "USD";
+
+      return actions.order.create({
+        purchase_units: [{
+          amount: { value: amount, currency_code: currency },
+          description: "SlideGenius Unlock Download"
+        }]
+      });
+    },
+
+    onApprove: async (data, actions) => {
+      try{
+        const details = await actions.order.capture();
+        setUnlocked(true);
+        updatePayStatus();
+        msg.textContent = state.lang==="ar"
+          ? `✅ تم الدفع بنجاح. ${details?.payer?.name?.given_name ? "شكرًا " + details.payer.name.given_name : ""}`
+          : `✅ Payment successful. Thank you ${details?.payer?.name?.given_name || ""}`;
+        // go editor
+        showPage("editor");
+      }catch(e){
+        msg.textContent = state.lang==="ar" ? "صار خطأ أثناء التقاط الدفع." : "Capture failed.";
+      }
+    },
+
+    onCancel: () => {
+      msg.textContent = state.lang==="ar" ? "تم إلغاء الدفع." : "Payment cancelled.";
+    },
+
+    onError: (err) => {
+      console.error(err);
+      msg.textContent = state.lang==="ar"
+        ? "خطأ PayPal. تأكدي من Client ID والعملة."
+        : "PayPal error. Check Client ID and currency.";
+    }
+
+  }).render("#paypalArea");
+}
+
+// ---------- Admin (local) ----------
+function isAdmin(){
+  return localStorage.getItem(LS.ADMIN_OK) === "1";
+}
+function setAdmin(v){
+  localStorage.setItem(LS.ADMIN_OK, v ? "1" : "0");
+}
+
+function bindAdmin(){
+  $("btnAdminLogin").addEventListener("click", ()=>{
+    const pw = $("adminPw").value || "";
+    if(pw === ADMIN_PASSWORD){
+      setAdmin(true);
+      toast($("adminMsg"), t("adminOk"), true);
+      renderAdminList();
+    }else{
+      setAdmin(false);
+      toast($("adminMsg"), t("adminBad"), false);
+      renderAdminList();
+    }
+  });
+
+  $("btnAdminLogout").addEventListener("click", ()=>{
+    setAdmin(false);
+    $("adminPw").value = "";
+    $("adminMsg").textContent = state.lang==="ar" ? "تم تسجيل الخروج." : "Logged out.";
+    renderAdminList();
+  });
+
+  $("btnAddTpl").addEventListener("click", ()=>{
+    if(!isAdmin()){
+      toast($("adminMsg"), state.lang==="ar" ? "لازم تسجيل دخول الأدمن أولاً." : "Admin login required.", false);
+      return;
+    }
+    const name = $("tplName").value.trim();
+    const img = $("tplImg").value.trim();
+    const price = Number($("tplPrice").value || 0);
+
+    if(!name || !img){
+      toast($("adminMsg"), state.lang==="ar" ? "اكتبي الاسم + رابط الصورة." : "Name + image URL required.", false);
+      return;
+    }
+    const id = "t" + Math.random().toString(16).slice(2,8);
+    state.templates.unshift({
+      id,
+      name_ar: name,
+      name_en: name,
+      price: isFinite(price)?price:0,
+      image: img
+    });
+    saveTemplates();
+    renderTemplates();
+    renderAdminList();
+    $("tplName").value = "";
+    $("tplImg").value = "";
+    toast($("adminMsg"), state.lang==="ar" ? "تمت الإضافة ✅" : "Added ✅", true);
+  });
+
+  $("btnResetTpl").addEventListener("click", ()=>{
+    if(!isAdmin()){
+      toast($("adminMsg"), state.lang==="ar" ? "لازم تسجيل دخول الأدمن أولاً." : "Admin login required.", false);
+      return;
+    }
+    state.templates = defaultTemplates();
+    saveTemplates();
+    renderTemplates();
+    renderAdminList();
+    toast($("adminMsg"), state.lang==="ar" ? "تم إرجاع الافتراضي ✅" : "Defaults restored ✅", true);
+  });
+}
+
+function renderAdminList(){
+  const list = $("adminTplList");
+  list.innerHTML = "";
+
+  const admin = isAdmin();
+
+  state.templates.forEach(tpl=>{
+    const el = document.createElement("div");
+    el.className = "item";
+    el.innerHTML = `
+      <div>
+        <div style="font-weight:800">${escapeHtml(templateName(tpl))}</div>
+        <small>${escapeHtml(tpl.image)}</small>
+      </div>
+      <div class="cta-row" style="margin:0">
+        ${admin ? `<button class="btn danger" data-del="${tpl.id}">${t("remove")}</button>` : ""}
+      </div>
+    `;
+    if(admin){
+      el.querySelector("[data-del]")?.addEventListener("click", ()=>{
+        state.templates = state.templates.filter(x=>x.id !== tpl.id);
+        saveTemplates();
+        renderTemplates();
+        renderAdminList();
+      });
+    }
+    list.appendChild(el);
+  });
+
+  // if no selected template, set it
+  if(!state.selectedTemplateId && state.templates[0]){
+    state.selectedTemplateId = state.templates[0].id;
+  }
+  syncTemplateSelect();
+}
+
+// ---------- Init ----------
+function init(){
+  loadTemplates();
+  loadUnlocked();
+  loadEdit();
+
+  // pick first template
+  if(!state.selectedTemplateId && state.templates[0]){
+    state.selectedTemplateId = state.templates[0].id;
+  }
+
+  bindNav();
+  bindEditor();
+  bindAdmin();
+  applyI18n();
+  renderTemplates();
+  syncEditorUI();
+  renderAdminList();
+  updatePayStatus();
+
+  // auto preview updates
+  renderPreview();
+}
+
+document.addEventListener("DOMContentLoaded", init);
